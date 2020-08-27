@@ -1,0 +1,88 @@
+##  Detection of open door using temperature and relativ humidity   ##
+##  Akhila Thomas        ##
+
+
+#importing library
+
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+
+#importing data 
+input_df=pd.read_csv("clean_data_2017.csv") 
+
+# changing the column name and all in lowercase
+input_df = input_df.rename(columns = {"Time":"time","Var1": "co2", "Var2": "rh","Var3": "temp"})
+input_df.set_index('time',inplace=False)
+
+# Summary statistics of the dataset.
+input_df.head()
+
+
+# we only need two variables which is relative humidity and temperature so dropping carbondioxide 
+input_df=input_df.drop(['co2'],axis=1)
+
+# Summary statistics of the dataset.
+input_df.head()
+
+#using moving average smoothening the signal with 8 as the choosen  smoothening value.
+
+input_df['rh_8m']=input_df['rh'].rolling(8).mean()
+input_df['temp_8m']=input_df['temp'].rolling(8).mean()
+
+input_df_8min0=input_df[0:1]
+input_df_8min1=input_df[1::8]
+input_df_8m= pd.concat([input_df_8min0,input_df_8min1], axis=0)
+
+
+# relative humidity
+input_df_8m['rh_8m_diff']=(input_df_8m['rh_8m'] - input_df_8m['rh_8m'].shift(1))
+input_df_8m['rh_8m_diff'].fillna(0, inplace=True)
+input_df_8m['index_col_8m'] = input_df_8m.index
+input_df_8m['Delta_8m']=(input_df_8m['index_col_8m'] - input_df_8m['index_col_8m'].shift(1))
+input_df_8m['Delta_8m'].fillna(0, inplace=True)
+#
+##finding the slope 
+
+input_df_8m['tan_theta_8m_rh']= (input_df_8m['rh_8m_diff'])/(input_df_8m['Delta_8m'])
+input_df_8m['tan_theta_8m_rh'].fillna(0, inplace=True)
+
+## tempertaure 
+input_df_8m['temp_8m_diff']=(input_df_8m['temp_8m'] - input_df_8m['temp_8m'].shift(1))
+input_df_8m['temp_8m_diff'].fillna(0, inplace=True)
+input_df_8m['index_col_8m'] = input_df_8m.index
+input_df_8m['Delta_8m']=(input_df_8m['index_col_8m'] - input_df_8m['index_col_8m'].shift(1))
+input_df_8m['Delta_8m'].fillna(0, inplace=True)
+#
+##finding the slope 
+
+input_df_8m['tan_theta_8m_temp']= (input_df_8m['temp_8m_diff'])/(input_df_8m['Delta_8m'])
+input_df_8m['tan_theta_8m_temp'].fillna(0, inplace=True)
+
+#Appying conditons that will categorize the data , that hepls to obtain the moment when the slope equalls zero
+conditions = [
+    (input_df_8m['tan_theta_8m_rh']==0) & (input_df_8m['tan_theta_8m_temp']==0)]
+values=[0]
+input_df_8m['categrized angle']=np.select(conditions,values,1)
+
+# seperating the data as test and train 
+input_df_x=input_df_8m.drop(['time','rh_8m','temp_8m','rh_8m_diff','Delta_8m','index_col_8m','tan_theta_8m_rh','temp_8m_diff','tan_theta_8m_temp','categrized angle'],axis=1)
+input_df_y=input_df_8m.drop(['time','rh','temp','rh_8m','temp_8m','rh_8m_diff','Delta_8m','index_col_8m','tan_theta_8m_rh','temp_8m_diff','tan_theta_8m_temp'],axis=1)
+
+#Training the data by applying regression 
+from sklearn.model_selection import train_test_split
+x_train, x_test, y_train,y_test = train_test_split(input_df_x,input_df_y,test_size = 0.25,random_state=0)
+
+# Applying logistic regression
+
+from sklearn.linear_model import LogisticRegression
+classifier = LogisticRegression()
+classifier.fit(x_train, y_train)
+
+##The model is already created and testing using testing data
+y_pred = classifier.predict(x_test)
+
+# obtaining the confusion matrix 
+from sklearn.metrics import confusion_matrix
+cm = confusion_matrix(y_test, y_pred)
+
